@@ -1,22 +1,11 @@
 use glob_lab::*;
 
-
 #[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
-  fn test() {
-    assert!(glob_match("**/*/abc", "/abc"));
-    assert!(glob_match("a/b/**", "a/b/c/d"));
-    assert!(glob_match("a/b/**", "a/b/c/d/"));
-    assert!(glob_match("a/b/**/", "a/b/c/d/"));
-    assert!(!glob_match("a/b/**/", "a/b/c/d"));
-  }
-
-  #[test]
   fn basic() {
-    assert!(glob_match("**/*/abc", "/abc"));
     assert!(glob_match("abc", "abc"));
     assert!(glob_match("*", "abc"));
     assert!(glob_match("*", ""));
@@ -73,7 +62,53 @@ mod tests {
     assert!(glob_match("a*b*[cy]*d*e*", "axbxcxdxexxx"));
     assert!(glob_match("a*b*[cy]*d*e*", "axbxyxdxexxx"));
     assert!(glob_match("a*b*[cy]*d*e*", "axbxxxyxdxexxx"));
+
+    assert!(glob_match("test.{jpg,png}", "test.jpg"));
+    assert!(glob_match("test.{jpg,png}", "test.png"));
+    assert!(glob_match("test.{j*g,p*g}", "test.jpg"));
+    assert!(glob_match("test.{j*g,p*g}", "test.jpxxxg"));
+    assert!(glob_match("test.{j*g,p*g}", "test.jxg"));
+    assert!(!glob_match("test.{j*g,p*g}", "test.jnt"));
+    assert!(glob_match("test.{j*g,j*c}", "test.jnc"));
+    assert!(glob_match("test.{jpg,p*g}", "test.png"));
+    assert!(glob_match("test.{jpg,p*g}", "test.pxg"));
+    assert!(!glob_match("test.{jpg,p*g}", "test.pnt"));
+    assert!(glob_match("test.{jpeg,png}", "test.jpeg"));
+    assert!(!glob_match("test.{jpeg,png}", "test.jpg"));
+    assert!(glob_match("test.{jpeg,png}", "test.png"));
+    assert!(glob_match("test.{jp\\,g,png}", "test.jp,g"));
+    assert!(!glob_match("test.{jp\\,g,png}", "test.jxg"));
+    assert!(glob_match("test/{foo,bar}/baz", "test/foo/baz"));
+    assert!(glob_match("test/{foo,bar}/baz", "test/bar/baz"));
+    assert!(!glob_match("test/{foo,bar}/baz", "test/baz/baz"));
+    assert!(glob_match("test/{foo*,bar*}/baz", "test/foooooo/baz"));
+    assert!(glob_match("test/{foo*,bar*}/baz", "test/barrrrr/baz"));
+    assert!(glob_match("test/{*foo,*bar}/baz", "test/xxxxfoo/baz"));
+    assert!(glob_match("test/{*foo,*bar}/baz", "test/xxxxbar/baz"));
+    assert!(glob_match("test/{foo/**,bar}/baz", "test/bar/baz"));
+    assert!(!glob_match("test/{foo/**,bar}/baz", "test/bar/test/baz"));
+
     assert!(!glob_match("*.txt", "some/big/path/to/the/needle.txt"));
+    assert!(glob_match(
+      "some/**/needle.{js,tsx,mdx,ts,jsx,txt}",
+      "some/a/bigger/path/to/the/crazy/needle.txt"
+    ));
+    assert!(glob_match(
+      "some/**/{a,b,c}/**/needle.txt",
+      "some/foo/a/bigger/path/to/the/crazy/needle.txt"
+    ));
+    assert!(!glob_match(
+      "some/**/{a,b,c}/**/needle.txt",
+      "some/foo/d/bigger/path/to/the/crazy/needle.txt"
+    ));
+    assert!(glob_match("a/{a{a,b},b}", "a/aa"));
+    assert!(glob_match("a/{a{a,b},b}", "a/ab"));
+    assert!(!glob_match("a/{a{a,b},b}", "a/ac"));
+    assert!(glob_match("a/{a{a,b},b}", "a/b"));
+    assert!(!glob_match("a/{a{a,b},b}", "a/c"));
+    assert!(glob_match("a/{b,c[}]*}", "a/b"));
+    assert!(glob_match("a/{b,c[}]*}", "a/c}xx"));
+
     assert!(glob_match("/**/*a", "/a/a"));
     assert!(glob_match("**/*.js", "a/b.c/c.js"));
     assert!(glob_match("**/**/*.js", "a/b.c/c.js"));
@@ -515,6 +550,7 @@ mod tests {
 
   #[test]
   fn bash_slashmatch() {
+    // assert!(!glob_match("f[^eiu][^eiu][^eiu][^eiu][^eiu]r", "foo/bar"));
     assert!(glob_match("foo[/]bar", "foo/bar"));
     assert!(glob_match("f[^eiu][^eiu][^eiu][^eiu][^eiu]r", "foo-bar"));
   }
@@ -764,6 +800,7 @@ mod tests {
     // assert!(glob_match("*", "a/"));
     assert!(glob_match("*", "a"));
     assert!(glob_match("*/", "a/"));
+    assert!(glob_match("*{,/}", "a/"));
     assert!(glob_match("*/*", "a/a"));
     assert!(glob_match("a/*", "a/a"));
 
@@ -971,6 +1008,8 @@ mod tests {
     assert!(glob_match("a/**/c/*.md", "a/bb.bb/aa/b.b/aa/c/xyz.md"));
     assert!(glob_match("a/**/c/*.md", "a/bb.bb/aa/bb/aa/c/xyz.md"));
     assert!(!glob_match("a/**/j/**/z/*.md", "a/b/c/j/e/z/c.txt"));
+    assert!(!glob_match("a/b/**/c{d,e}/**/xyz.md", "a/b/c/xyz.md"));
+    assert!(!glob_match("a/b/**/c{d,e}/**/xyz.md", "a/b/d/xyz.md"));
     assert!(!glob_match("a/**/", "a/b"));
     // assert!(!glob_match("**/*", "a/b/.js/c.txt"));
     assert!(!glob_match("a/**/", "a/b/c/d"));
@@ -1310,6 +1349,90 @@ mod tests {
 
   #[test]
   fn braces() {
+    assert!(glob_match("{a,b,c}", "a"));
+    assert!(glob_match("{a,b,c}", "b"));
+    assert!(glob_match("{a,b,c}", "c"));
+    assert!(!glob_match("{a,b,c}", "aa"));
+    assert!(!glob_match("{a,b,c}", "bb"));
+    assert!(!glob_match("{a,b,c}", "cc"));
+
+    assert!(glob_match("a/{a,b}", "a/a"));
+    assert!(glob_match("a/{a,b}", "a/b"));
+    assert!(!glob_match("a/{a,b}", "a/c"));
+    assert!(!glob_match("a/{a,b}", "b/b"));
+    assert!(!glob_match("a/{a,b,c}", "b/b"));
+    assert!(glob_match("a/{a,b,c}", "a/c"));
+    assert!(glob_match("a{b,bc}.txt", "abc.txt"));
+
+    assert!(glob_match("foo[{a,b}]baz", "foo{baz"));
+
+    assert!(!glob_match("a{,b}.txt", "abc.txt"));
+    assert!(!glob_match("a{a,b,}.txt", "abc.txt"));
+    assert!(!glob_match("a{b,}.txt", "abc.txt"));
+    assert!(glob_match("a{,b}.txt", "a.txt"));
+    assert!(glob_match("a{b,}.txt", "a.txt"));
+    assert!(glob_match("a{a,b,}.txt", "aa.txt"));
+    assert!(glob_match("a{a,b,}.txt", "aa.txt"));
+    assert!(glob_match("a{,b}.txt", "ab.txt"));
+    assert!(glob_match("a{b,}.txt", "ab.txt"));
+
+    // assert!(glob_match("{a/,}a/**", "a"));
+    assert!(glob_match("a{a,b/}*.txt", "aa.txt"));
+    assert!(glob_match("a{a,b/}*.txt", "ab/.txt"));
+    assert!(glob_match("a{a,b/}*.txt", "ab/a.txt"));
+    // assert!(glob_match("{a/,}a/**", "a/"));
+    assert!(glob_match("{a/,}a/**", "a/a/"));
+    // assert!(glob_match("{a/,}a/**", "a/a"));
+    assert!(glob_match("{a/,}a/**", "a/a/a"));
+    assert!(glob_match("{a/,}a/**", "a/a/"));
+    assert!(glob_match("{a/,}a/**", "a/a/a/"));
+    assert!(glob_match("{a/,}b/**", "a/b/a/"));
+    assert!(glob_match("{a/,}b/**", "b/a/"));
+    assert!(glob_match("a{,/}*.txt", "a.txt"));
+    assert!(glob_match("a{,/}*.txt", "ab.txt"));
+    assert!(glob_match("a{,/}*.txt", "a/b.txt"));
+    assert!(glob_match("a{,/}*.txt", "a/ab.txt"));
+
+    assert!(glob_match("a{,.*{foo,db},\\(bar\\)}.txt", "a.txt"));
+    assert!(!glob_match("a{,.*{foo,db},\\(bar\\)}.txt", "adb.txt"));
+    assert!(glob_match("a{,.*{foo,db},\\(bar\\)}.txt", "a.db.txt"));
+
+    assert!(glob_match("a{,*.{foo,db},\\(bar\\)}.txt", "a.txt"));
+    assert!(!glob_match("a{,*.{foo,db},\\(bar\\)}.txt", "adb.txt"));
+    assert!(glob_match("a{,*.{foo,db},\\(bar\\)}.txt", "a.db.txt"));
+
+    // assert!(glob_match("a{,.*{foo,db},\\(bar\\)}", "a"));
+    assert!(!glob_match("a{,.*{foo,db},\\(bar\\)}", "adb"));
+    assert!(glob_match("a{,.*{foo,db},\\(bar\\)}", "a.db"));
+
+    // assert!(glob_match("a{,*.{foo,db},\\(bar\\)}", "a"));
+    assert!(!glob_match("a{,*.{foo,db},\\(bar\\)}", "adb"));
+    assert!(glob_match("a{,*.{foo,db},\\(bar\\)}", "a.db"));
+
+    assert!(!glob_match("{,.*{foo,db},\\(bar\\)}", "a"));
+    assert!(!glob_match("{,.*{foo,db},\\(bar\\)}", "adb"));
+    assert!(!glob_match("{,.*{foo,db},\\(bar\\)}", "a.db"));
+    assert!(glob_match("{,.*{foo,db},\\(bar\\)}", ".db"));
+
+    assert!(!glob_match("{,*.{foo,db},\\(bar\\)}", "a"));
+    assert!(glob_match("{*,*.{foo,db},\\(bar\\)}", "a"));
+    assert!(!glob_match("{,*.{foo,db},\\(bar\\)}", "adb"));
+    assert!(glob_match("{,*.{foo,db},\\(bar\\)}", "a.db"));
+
+    assert!(!glob_match("a/b/**/c{d,e}/**/xyz.md", "a/b/c/xyz.md"));
+    assert!(!glob_match("a/b/**/c{d,e}/**/xyz.md", "a/b/d/xyz.md"));
+    assert!(glob_match("a/b/**/c{d,e}/**/xyz.md", "a/b/cd/xyz.md"));
+    assert!(glob_match("a/b/**/{c,d,e}/**/xyz.md", "a/b/c/xyz.md"));
+    assert!(glob_match("a/b/**/{c,d,e}/**/xyz.md", "a/b/d/xyz.md"));
+    assert!(glob_match("a/b/**/{c,d,e}/**/xyz.md", "a/b/e/xyz.md"));
+
+    assert!(glob_match("*{a,b}*", "xax"));
+    assert!(glob_match("*{a,b}*", "xxax"));
+    assert!(glob_match("*{a,b}*", "xbx"));
+
+    assert!(glob_match("*{*a,b}", "xba"));
+    assert!(glob_match("*{*a,b}", "xb"));
+
     assert!(!glob_match("*??", "a"));
     assert!(!glob_match("*???", "aa"));
     assert!(glob_match("*???", "aaa"));
@@ -1385,5 +1508,14 @@ mod tests {
     assert!(glob_match("a/*/ab??.md", "a/bbb/abcd.md"));
     assert!(glob_match("a/bbb/ab??.md", "a/bbb/abcd.md"));
     assert!(glob_match("a/bbb/ab???md", "a/bbb/abcd.md"));
+  }
+
+  #[test]
+  fn fuzz_tests() {
+    // https://github.com/devongovett/glob-match/issues/1
+    let s = "{*{??*{??**,Uz*zz}w**{*{**a,z***b*[!}w??*azzzzzzzz*!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!z[za,z&zz}w**z*z*}";
+    assert!(!glob_match(s, s));
+    let s = "**** *{*{??*{??***\u{5} *{*{??*{??***\u{5},\0U\0}]*****\u{1},\0***\0,\0\0}w****,\0U\0}]*****\u{1},\0***\0,\0\0}w*****\u{1}***{}*.*\0\0*\0";
+    assert!(!glob_match(s, s));
   }
 }

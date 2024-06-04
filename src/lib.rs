@@ -20,15 +20,13 @@ struct Wildcard {
 }
 
 pub fn glob_match(glob: &str, path: &str) -> bool {
-  glob_match_internal(glob, path)
+  glob_match_internal(glob.as_bytes(), path.as_bytes())
 }
 
-fn glob_match_internal(glob: &str, path: &str) -> bool {
+fn glob_match_internal(glob: &[u8], path: &[u8]) -> bool {
   // This algorithm is based on https://research.swtch.com/glob
-  let glob = glob.as_bytes();
-  let path = path.as_bytes();
-
   let mut state = State::default();
+  let mut stack: Vec<(usize, usize)> = Vec::new();
 
   // First, check if the pattern is negated with a leading '!' character.
   // Multiple negations can occur.
@@ -58,7 +56,7 @@ fn glob_match_internal(glob: &str, path: &str) -> bool {
           if is_globstar {
             state.glob_index += 2;
 
-            // /**/  /**
+            // /**/ or /**
             let is_end_invalid = state.glob_index != glob.len();
 
             if !is_end_invalid
@@ -153,6 +151,69 @@ fn glob_match_internal(glob: &str, path: &str) -> bool {
             continue;
           }
         }
+        b'{' => {
+          // Handle brace expansion
+          let mut brace_end_index = state.glob_index + 1;
+          let mut nested_brace_count = 1;
+
+          while brace_end_index < glob.len() && nested_brace_count > 0 {
+            match glob[brace_end_index] {
+              b'{' => nested_brace_count += 1,
+              b'}' => nested_brace_count -= 1,
+              b'\\' => brace_end_index += 1,
+              _ => {}
+            }
+            brace_end_index += 1;
+          }
+
+          if nested_brace_count != 0 {
+            // Unmatched braces
+            return false;
+          }
+
+          let brace_contents = &glob[state.glob_index + 1..brace_end_index - 1];
+          let mut choices_start = 0;
+
+          for (choices_end, &byte) in brace_contents.iter().enumerate() {
+            if byte == b',' && (choices_end == 0 || brace_contents[choices_end - 1] != b'\\') {
+              let choice = &brace_contents[choices_start..choices_end];
+              let substate = (
+                state.glob_index + brace_end_index - state.glob_index,
+                state.path_index,
+              );
+              stack.push((substate.0 + 1, substate.1));
+
+              if glob_match_internal(choice, &path[state.path_index..]) {
+                return true;
+              }
+
+              choices_start = choices_end + 1;
+            }
+          }
+
+          if choices_start != brace_contents.len() {
+            let choice = &brace_contents[choices_start..];
+            let substate = (
+              state.glob_index + brace_end_index - state.glob_index,
+              state.path_index,
+            );
+            stack.push((substate.0 + 1, substate.1));
+
+            if glob_match_internal(choice, &path[state.path_index..]) {
+              return true;
+            }
+          }
+
+          if stack.is_empty() {
+            return false;
+          }
+
+          let next_state = stack.pop().unwrap();
+          state.glob_index = next_state.0;
+          state.path_index = next_state.1;
+
+          continue;
+        }
         mut c if state.path_index < path.len() => {
           // Match escaped characters as literals.
           if !unescape(&mut c, glob, &mut state.glob_index) {
@@ -183,7 +244,7 @@ fn glob_match_internal(glob: &str, path: &str) -> bool {
 
     // If we didn't match, restore state to the previous star pattern.
     // **/*/abc  /abc
-    if state.wildcard.path_index > 0 && state.wildcard.path_index <= path.len() as u32 {
+    if state.wildcard.path_index > 0 && state.wildcard.path_index as usize <= path.len() {
       state.backtrack();
       continue;
     }
