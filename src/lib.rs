@@ -15,12 +15,29 @@ struct Wildcard {
   path_index: usize,
 }
 
+#[derive(Debug, Default)]
+struct BraceState {
+  length: u8,
+
+  stack: [Option<State>; 10],
+
+  wildcard: Option<BraceWildcard>,
+  globstar: Option<BraceWildcard>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct BraceWildcard {
+  stack: [Option<State>; 10],
+  length: u8,
+}
+
 pub fn glob_match(glob: &str, path: &str) -> bool {
   glob_match_internal(glob.as_bytes(), path.as_bytes())
 }
 
 fn glob_match_internal(glob: &[u8], path: &[u8]) -> bool {
   let mut state = State::default();
+  let mut brace_state = BraceState::default();
 
   let mut negated = false;
   while state.glob_index < glob.len() && glob[state.glob_index] == b'!' {
