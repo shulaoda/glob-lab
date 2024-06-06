@@ -21,8 +21,8 @@ pub fn glob_match(glob: &str, path: &str) -> bool {
 
 fn glob_match_internal(glob: &[u8], path: &[u8]) -> bool {
   let mut state = State::default();
-  let mut negated = false;
 
+  let mut negated = false;
   while state.glob_index < glob.len() && glob[state.glob_index] == b'!' {
     negated = !negated;
     state.glob_index += 1;
@@ -41,7 +41,6 @@ fn glob_match_internal(glob: &[u8], path: &[u8]) -> bool {
           state.wildcard.path_index = state.path_index + 1;
 
           let mut in_globstar = false;
-
           if is_globstar {
             state.glob_index += 2;
 
@@ -90,7 +89,6 @@ fn glob_match_internal(glob: &[u8], path: &[u8]) -> bool {
           let mut first = true;
           let mut is_match = false;
           let c = path[state.path_index];
-
           while state.glob_index < glob.len() && (first || glob[state.glob_index] != b']') {
             let mut low = glob[state.glob_index];
             if !unescape(&mut low, glob, &mut state.glob_index) {
@@ -226,7 +224,6 @@ impl State {
       if is_separator(path[path_index] as char) {
         break;
       }
-
       path_index += 1;
     }
 

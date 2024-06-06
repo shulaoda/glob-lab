@@ -3,7 +3,7 @@ use glob_lab::*;
 #[cfg(test)]
 mod tests {
   use super::*;
-  
+
   #[test]
   fn test() {
     assert!(glob_match("**/*/abc", "/abc"));
