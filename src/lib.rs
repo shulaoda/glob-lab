@@ -1,3 +1,5 @@
+mod brace;
+
 use std::path::is_separator;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -15,29 +17,12 @@ struct Wildcard {
   path_index: usize,
 }
 
-#[derive(Debug, Default)]
-struct BraceState {
-  length: u8,
-
-  stack: [Option<State>; 10],
-
-  wildcard: Option<BraceWildcard>,
-  globstar: Option<BraceWildcard>,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-struct BraceWildcard {
-  stack: [Option<State>; 10],
-  length: u8,
-}
-
 pub fn glob_match(glob: &str, path: &str) -> bool {
   glob_match_internal(glob.as_bytes(), path.as_bytes())
 }
 
 fn glob_match_internal(glob: &[u8], path: &[u8]) -> bool {
   let mut state = State::default();
-  let mut brace_state = BraceState::default();
 
   let mut negated = false;
   while state.glob_index < glob.len() && glob[state.glob_index] == b'!' {
@@ -220,9 +205,7 @@ impl State {
       glob_index += 3;
     }
 
-    if glob_index + 3 == glob.len()
-      && unsafe { glob.get_unchecked(glob_index..glob_index + 3) } == b"/**"
-    {
+    if glob_index + 3 == glob.len() && unsafe { glob.get_unchecked(glob_index..) } == b"/**" {
       glob_index += 3;
     }
 
@@ -237,10 +220,7 @@ impl State {
     }
 
     let mut path_index = self.path_index;
-    while path_index < path.len() {
-      if is_separator(path[path_index] as char) {
-        break;
-      }
+    while path_index < path.len() && !is_separator(path[path_index] as char) {
       path_index += 1;
     }
 
@@ -249,6 +229,5 @@ impl State {
     }
 
     self.wildcard.path_index = path_index;
-    self.globstar = self.wildcard;
   }
 }
