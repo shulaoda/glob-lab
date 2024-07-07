@@ -6,35 +6,7 @@ pub struct Pattern {
 }
 
 impl Pattern {
-  pub fn with(glob: &[u8]) -> Option<Self> {
-    if let Some(branch) = Self::brace(glob) {
-      if branch.is_empty() {
-        let value = glob.to_vec();
-        let shadow = Vec::<(usize, usize)>::with_capacity(0);
-
-        return Some(Pattern {
-          value,
-          branch,
-          shadow,
-        });
-      }
-
-      let value = Vec::with_capacity(glob.len());
-      let shadow = Vec::<(usize, usize)>::new();
-
-      let mut node = Pattern {
-        value,
-        branch,
-        shadow,
-      };
-
-      node.track(glob);
-      return Some(node);
-    }
-    None
-  }
-
-  pub fn brace(glob: &[u8]) -> Option<Vec<(u8, u8)>> {
+  fn brace(glob: &[u8]) -> Option<Vec<(u8, u8)>> {
     let mut braces = 0;
     let mut current = 0;
     let mut in_brackets = false;
@@ -69,6 +41,34 @@ impl Pattern {
     } else {
       None
     }
+  }
+
+  pub fn with(glob: &[u8]) -> Option<Self> {
+    if let Some(branch) = Self::brace(glob) {
+      if branch.is_empty() {
+        let value = glob.to_vec();
+        let shadow = Vec::<(usize, usize)>::with_capacity(0);
+
+        return Some(Pattern {
+          value,
+          branch,
+          shadow,
+        });
+      }
+
+      let value = Vec::with_capacity(glob.len());
+      let shadow = Vec::<(usize, usize)>::new();
+
+      let mut node = Pattern {
+        value,
+        branch,
+        shadow,
+      };
+
+      node.track(glob);
+      return Some(node);
+    }
+    None
   }
 
   pub fn track(&mut self, glob: &[u8]) {

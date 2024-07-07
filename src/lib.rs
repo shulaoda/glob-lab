@@ -8,7 +8,7 @@ use brace::Pattern;
 struct State {
   path_index: usize,
   glob_index: usize,
-  longest_match: usize,
+  longest_index: usize,
 
   wildcard: Wildcard,
   globstar: Wildcard,
@@ -24,7 +24,7 @@ struct Wildcard {
 fn unescape(c: &mut u8, glob: &[u8], state: &mut State) -> bool {
   if *c == b'\\' {
     state.glob_index += 1;
-    state.longest_match += 1;
+    state.longest_index += 1;
     if state.glob_index >= glob.len() {
       return false;
     }
@@ -59,7 +59,7 @@ impl State {
       glob_index += 3;
     }
 
-    self.longest_match = self.longest_match.max(glob_index);
+    self.longest_index = self.longest_index.max(glob_index);
     self.glob_index = glob_index - 2;
   }
 
@@ -91,7 +91,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
   while state.glob_index < glob.len() && glob[state.glob_index] == b'!' {
     negated = !negated;
     state.glob_index += 1;
-    state.longest_match = state.longest_match.max(state.glob_index);
+    state.longest_index = state.longest_index.max(state.glob_index);
   }
 
   while state.glob_index < glob.len() || state.path_index < path.len() {
@@ -112,9 +112,8 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
 
             let is_end_invalid = state.glob_index != glob.len();
 
-            if !is_end_invalid
-              || ((state.glob_index < 3 || glob[state.glob_index - 3] == b'/')
-                && glob[state.glob_index] == b'/')
+            if (state.glob_index < 3 || glob[state.glob_index - 3] == b'/')
+              && (!is_end_invalid || glob[state.glob_index] == b'/')
             {
               if is_end_invalid {
                 state.glob_index += 1;
@@ -127,7 +126,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
             state.glob_index += 1;
           }
 
-          state.longest_match = state.longest_match.max(state.glob_index);
+          state.longest_index = state.longest_index.max(state.glob_index);
 
           if !in_globstar
             && state.path_index < path.len()
@@ -142,7 +141,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
           if !is_separator(path[state.path_index] as char) {
             state.glob_index += 1;
             state.path_index += 1;
-            state.longest_match = state.longest_match.max(state.glob_index);
+            state.longest_index = state.longest_index.max(state.glob_index);
             continue;
           }
         }
@@ -155,7 +154,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
             state.glob_index += 1;
           }
 
-          state.longest_match = state.longest_match.max(state.glob_index);
+          state.longest_index = state.longest_index.max(state.glob_index);
 
           let mut first = true;
           let mut is_match = false;
@@ -163,26 +162,26 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
           while state.glob_index < glob.len() && (first || glob[state.glob_index] != b']') {
             let mut low = glob[state.glob_index];
             if !unescape(&mut low, glob, &mut state) {
-              return (false, state.longest_match);
+              return (false, state.longest_index);
             }
 
             state.glob_index += 1;
-            state.longest_match = state.longest_match.max(state.glob_index);
+            state.longest_index = state.longest_index.max(state.glob_index);
 
             let high = if state.glob_index + 1 < glob.len()
               && glob[state.glob_index] == b'-'
               && glob[state.glob_index + 1] != b']'
             {
               state.glob_index += 1;
-              state.longest_match = state.longest_match.max(state.glob_index);
+              state.longest_index = state.longest_index.max(state.glob_index);
 
               let mut high = glob[state.glob_index];
               if !unescape(&mut high, glob, &mut state) {
-                return (false, state.longest_match);
+                return (false, state.longest_index);
               }
 
               state.glob_index += 1;
-              state.longest_match = state.longest_match.max(state.glob_index);
+              state.longest_index = state.longest_index.max(state.glob_index);
               high
             } else {
               low
@@ -196,7 +195,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
           }
 
           if state.glob_index >= glob.len() {
-            return (false, state.longest_match);
+            return (false, state.longest_index);
           }
 
           state.glob_index += 1;
@@ -207,7 +206,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
         }
         mut c if state.path_index < path.len() => {
           if !unescape(&mut c, glob, &mut state) {
-            return (false, state.longest_match);
+            return (false, state.longest_index);
           }
 
           let is_match = if c == b'/' {
@@ -219,7 +218,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
           if is_match {
             state.glob_index += 1;
             state.path_index += 1;
-            state.longest_match = state.longest_match.max(state.glob_index);
+            state.longest_index = state.longest_index.max(state.glob_index);
 
             if c == b'/' {
               state.wildcard = state.globstar;
@@ -237,10 +236,10 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
       continue;
     }
 
-    return (negated, state.longest_match);
+    return (negated, state.longest_index);
   }
 
-  return (!negated, state.longest_match);
+  return (!negated, state.longest_index);
 }
 
 pub fn glob_match(glob: &str, path: &str) -> bool {
@@ -253,9 +252,9 @@ pub fn glob_match_with_brace(glob: &str, path: &str) -> bool {
 
   if let Some(pattern) = &mut Pattern::with(glob) {
     loop {
-      let (result, longest_match) = glob_match_normal(&pattern.value, path);
+      let (result, longest_index) = glob_match_normal(&pattern.value, path);
 
-      if result || !pattern.trigger(glob, longest_match) {
+      if result || !pattern.trigger(glob, longest_index) {
         return result;
       }
     }
