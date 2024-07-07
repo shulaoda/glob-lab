@@ -21,209 +21,196 @@ struct Wildcard {
 }
 
 pub fn glob_match(glob: &str, path: &str) -> bool {
-  glob_match_internal(glob.as_bytes(), path.as_bytes())
+  glob_match_normal(glob.as_bytes(), path.as_bytes()).0
 }
 
-fn glob_match_internal(glob: &[u8], path: &[u8]) -> bool {
+pub fn glob_match_with_brace(glob: &str, path: &str) -> bool {
+  let glob = glob.as_bytes();
+  let path = path.as_bytes();
+
   if let Some(pattern) = &mut Pattern::with(glob) {
     loop {
-      let mut plug = false;
-      let mut state = State::default();
+      let (result, longest_match) = glob_match_normal(&pattern.value, path);
 
-      let mut negated = false;
-      while state.glob_index < pattern.value.len() && pattern.value[state.glob_index] == b'!' {
-        negated = !negated;
-        state.glob_index += 1;
-        state.longest_match = state.longest_match.max(state.glob_index);
+      if result || !pattern.trigger(glob, longest_match) {
+        return result;
       }
+    }
+  }
+  false
+}
 
-      'outer: while state.glob_index < pattern.value.len() || state.path_index < path.len() {
-        if state.glob_index < pattern.value.len() {
-          match pattern.value[state.glob_index] {
-            b'*' => {
-              let is_globstar = state.glob_index + 1 < pattern.value.len()
-                && pattern.value[state.glob_index + 1] == b'*';
-              if is_globstar {
-                state.skip_globstars(&pattern.value);
-              }
+fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
+  let mut state = State::default();
 
-              state.wildcard.glob_index = state.glob_index;
-              state.wildcard.path_index = state.path_index + 1;
+  let mut negated = false;
+  while state.glob_index < glob.len() && glob[state.glob_index] == b'!' {
+    negated = !negated;
+    state.glob_index += 1;
+    state.longest_match = state.longest_match.max(state.glob_index);
+  }
 
-              let mut in_globstar = false;
-              if is_globstar {
-                state.glob_index += 2;
+  while state.glob_index < glob.len() || state.path_index < path.len() {
+    if state.glob_index < glob.len() {
+      match glob[state.glob_index] {
+        b'*' => {
+          let is_globstar = state.glob_index + 1 < glob.len() && glob[state.glob_index + 1] == b'*';
+          if is_globstar {
+            state.skip_globstars(glob);
+          }
 
-                let is_end_invalid = state.glob_index != pattern.value.len();
+          state.wildcard.glob_index = state.glob_index;
+          state.wildcard.path_index = state.path_index + 1;
 
-                if !is_end_invalid
-                  || ((state.glob_index < 3 || pattern.value[state.glob_index - 3] == b'/')
-                    && pattern.value[state.glob_index] == b'/')
-                {
-                  if is_end_invalid {
-                    state.glob_index += 1;
-                    state.longest_match = state.longest_match.max(state.glob_index);
-                  }
+          let mut in_globstar = false;
+          if is_globstar {
+            state.glob_index += 2;
 
-                  state.skip_to_separator(path, is_end_invalid);
-                  in_globstar = true;
-                }
-              } else {
+            let is_end_invalid = state.glob_index != glob.len();
+
+            if !is_end_invalid
+              || ((state.glob_index < 3 || glob[state.glob_index - 3] == b'/')
+                && glob[state.glob_index] == b'/')
+            {
+              if is_end_invalid {
                 state.glob_index += 1;
-                state.longest_match = state.longest_match.max(state.glob_index);
               }
 
-              if !in_globstar
-                && state.path_index < path.len()
-                && is_separator(path[state.path_index] as char)
-              {
-                state.wildcard = state.globstar;
-              }
+              state.skip_to_separator(path, is_end_invalid);
+              in_globstar = true;
+            }
+          } else {
+            state.glob_index += 1;
+          }
 
-              continue;
+          state.longest_match = state.longest_match.max(state.glob_index);
+
+          if !in_globstar
+            && state.path_index < path.len()
+            && is_separator(path[state.path_index] as char)
+          {
+            state.wildcard = state.globstar;
+          }
+
+          continue;
+        }
+        b'?' if state.path_index < path.len() => {
+          if !is_separator(path[state.path_index] as char) {
+            state.glob_index += 1;
+            state.path_index += 1;
+            state.longest_match = state.longest_match.max(state.glob_index);
+            continue;
+          }
+        }
+        b'[' if state.path_index < path.len() => {
+          state.glob_index += 1;
+
+          let mut negated = false;
+          if state.glob_index < glob.len() && matches!(glob[state.glob_index], b'^' | b'!') {
+            negated = true;
+            state.glob_index += 1;
+          }
+
+          state.longest_match = state.longest_match.max(state.glob_index);
+
+          let mut first = true;
+          let mut is_match = false;
+          let c = path[state.path_index];
+          while state.glob_index < glob.len() && (first || glob[state.glob_index] != b']') {
+            let mut low = glob[state.glob_index];
+            if !unescape(
+              &mut low,
+              glob,
+              &mut state.glob_index,
+              &mut state.longest_match,
+            ) {
+              return (false, state.longest_match);
             }
-            b'?' if state.path_index < path.len() => {
-              if !is_separator(path[state.path_index] as char) {
-                state.glob_index += 1;
-                state.path_index += 1;
-                state.longest_match = state.longest_match.max(state.glob_index);
-                continue;
-              }
-            }
-            b'[' if state.path_index < path.len() => {
+            state.glob_index += 1;
+            state.longest_match = state.longest_match.max(state.glob_index);
+
+            let high = if state.glob_index + 1 < glob.len()
+              && glob[state.glob_index] == b'-'
+              && glob[state.glob_index + 1] != b']'
+            {
               state.glob_index += 1;
               state.longest_match = state.longest_match.max(state.glob_index);
 
-              let mut negated = false;
-              if state.glob_index < pattern.value.len()
-                && matches!(pattern.value[state.glob_index], b'^' | b'!')
-              {
-                negated = true;
-                state.glob_index += 1;
-                state.longest_match = state.longest_match.max(state.glob_index);
-              }
-
-              let mut first = true;
-              let mut is_match = false;
-              let c = path[state.path_index];
-              while state.glob_index < pattern.value.len()
-                && (first || pattern.value[state.glob_index] != b']')
-              {
-                let mut low = pattern.value[state.glob_index];
-                if !unescape(
-                  &mut low,
-                  &pattern.value,
-                  &mut state.glob_index,
-                  &mut state.longest_match,
-                ) {
-                  plug = true;
-                  negated = false;
-                  break 'outer;
-                }
-                state.glob_index += 1;
-                state.longest_match = state.longest_match.max(state.glob_index);
-
-                let high = if state.glob_index + 1 < pattern.value.len()
-                  && pattern.value[state.glob_index] == b'-'
-                  && pattern.value[state.glob_index + 1] != b']'
-                {
-                  state.glob_index += 1;
-                  state.longest_match = state.longest_match.max(state.glob_index);
-
-                  let mut high = pattern.value[state.glob_index];
-                  if !unescape(
-                    &mut high,
-                    &pattern.value,
-                    &mut state.glob_index,
-                    &mut state.longest_match,
-                  ) {
-                    plug = true;
-                    negated = false;
-                    break 'outer;
-                  }
-
-                  state.glob_index += 1;
-                  state.longest_match = state.longest_match.max(state.glob_index);
-                  high
-                } else {
-                  low
-                };
-
-                if low <= c && c <= high {
-                  is_match = true;
-                }
-
-                first = false;
-              }
-
-              if state.glob_index >= pattern.value.len() {
-                plug = true;
-                negated = false;
-                break 'outer;
-              }
-
-              state.glob_index += 1;
-              state.longest_match = state.longest_match.max(state.glob_index);
-              if is_match != negated {
-                state.path_index += 1;
-                continue;
-              }
-            }
-            mut c if state.path_index < path.len() => {
+              let mut high = glob[state.glob_index];
               if !unescape(
-                &mut c,
-                &pattern.value,
+                &mut high,
+                glob,
                 &mut state.glob_index,
                 &mut state.longest_match,
               ) {
-                plug = true;
-                negated = false;
-                break 'outer;
+                return (false, state.longest_match);
               }
 
-              let is_match = if c == b'/' {
-                is_separator(path[state.path_index] as char)
-              } else {
-                path[state.path_index] == c
-              };
+              state.glob_index += 1;
+              state.longest_match = state.longest_match.max(state.glob_index);
+              high
+            } else {
+              low
+            };
 
-              if is_match {
-                state.glob_index += 1;
-                state.path_index += 1;
-                state.longest_match = state.longest_match.max(state.glob_index);
-
-                if c == b'/' {
-                  state.wildcard = state.globstar;
-                }
-
-                continue;
-              }
+            if low <= c && c <= high {
+              is_match = true;
             }
-            _ => {}
+
+            first = false;
+          }
+
+          if state.glob_index >= glob.len() {
+            return (false, state.longest_match);
+          }
+
+          state.glob_index += 1;
+          if is_match != negated {
+            state.path_index += 1;
+            continue;
           }
         }
+        mut c if state.path_index < path.len() => {
+          if !unescape(
+            &mut c,
+            glob,
+            &mut state.glob_index,
+            &mut state.longest_match,
+          ) {
+            return (false, state.longest_match);
+          }
 
-        if state.wildcard.path_index > 0 && state.wildcard.path_index <= path.len() {
-          state.backtrack();
-          continue;
+          let is_match = if c == b'/' {
+            is_separator(path[state.path_index] as char)
+          } else {
+            path[state.path_index] == c
+          };
+
+          if is_match {
+            state.glob_index += 1;
+            state.path_index += 1;
+            state.longest_match = state.longest_match.max(state.glob_index);
+
+            if c == b'/' {
+              state.wildcard = state.globstar;
+            }
+
+            continue;
+          }
         }
-
-        plug = true;
-        break;
+        _ => {}
       }
-
-      if plug {
-        if pattern.trigger(glob, state.longest_match) {
-          continue;
-        }
-        return negated;
-      }
-
-      return !negated;
     }
+
+    if state.wildcard.path_index > 0 && state.wildcard.path_index <= path.len() {
+      state.backtrack();
+      continue;
+    }
+
+    return (negated, state.longest_match);
   }
 
-  false
+  return (!negated, state.longest_match);
 }
 
 #[inline(always)]
@@ -257,13 +244,11 @@ impl State {
   fn skip_globstars(&mut self, glob: &[u8]) {
     let mut glob_index = self.glob_index + 2;
 
-    while glob_index + 4 <= glob.len()
-      && unsafe { glob.get_unchecked(glob_index..glob_index + 4) } == b"/**/"
-    {
+    while glob_index + 4 <= glob.len() && &glob[glob_index..glob_index + 4] == b"/**/" {
       glob_index += 3;
     }
 
-    if glob_index + 3 == glob.len() && unsafe { glob.get_unchecked(glob_index..) } == b"/**" {
+    if glob_index + 3 == glob.len() && &glob[glob_index..] == b"/**" {
       glob_index += 3;
     }
 
