@@ -5,6 +5,9 @@ mod tests {
   use super::*;
 
   #[test]
+  fn test() {}
+
+  #[test]
   fn basic() {
     assert!(glob_match("abc", "abc"));
     assert!(glob_match("*", "abc"));
@@ -69,6 +72,7 @@ mod tests {
     assert!(glob_match("test.{j*g,p*g}", "test.jpxxxg"));
     assert!(glob_match("test.{j*g,p*g}", "test.jxg"));
     assert!(!glob_match("test.{j*g,p*g}", "test.jnt"));
+
     assert!(glob_match("test.{j*g,j*c}", "test.jnc"));
     assert!(glob_match("test.{jpg,p*g}", "test.png"));
     assert!(glob_match("test.{jpg,p*g}", "test.pxg"));
@@ -101,6 +105,7 @@ mod tests {
       "some/**/{a,b,c}/**/needle.txt",
       "some/foo/d/bigger/path/to/the/crazy/needle.txt"
     ));
+
     assert!(glob_match("a/{a{a,b},b}", "a/aa"));
     assert!(glob_match("a/{a{a,b},b}", "a/ab"));
     assert!(!glob_match("a/{a{a,b},b}", "a/ac"));
