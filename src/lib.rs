@@ -20,24 +20,68 @@ struct Wildcard {
   path_index: usize,
 }
 
-pub fn glob_match(glob: &str, path: &str) -> bool {
-  glob_match_normal(glob.as_bytes(), path.as_bytes()).0
-}
-
-pub fn glob_match_with_brace(glob: &str, path: &str) -> bool {
-  let glob = glob.as_bytes();
-  let path = path.as_bytes();
-
-  if let Some(pattern) = &mut Pattern::with(glob) {
-    loop {
-      let (result, longest_match) = glob_match_normal(&pattern.value, path);
-
-      if result || !pattern.trigger(glob, longest_match) {
-        return result;
-      }
+#[inline(always)]
+fn unescape(c: &mut u8, glob: &[u8], state: &mut State) -> bool {
+  if *c == b'\\' {
+    state.glob_index += 1;
+    state.longest_match += 1;
+    if state.glob_index >= glob.len() {
+      return false;
+    }
+    *c = match glob[state.glob_index] {
+      b'a' => b'\x61',
+      b'b' => b'\x08',
+      b'n' => b'\n',
+      b'r' => b'\r',
+      b't' => b'\t',
+      c => c,
     }
   }
-  false
+  true
+}
+
+impl State {
+  #[inline(always)]
+  fn backtrack(&mut self) {
+    self.glob_index = self.wildcard.glob_index;
+    self.path_index = self.wildcard.path_index;
+  }
+
+  #[inline(always)]
+  fn skip_globstars(&mut self, glob: &[u8]) {
+    let mut glob_index = self.glob_index + 2;
+
+    while glob_index + 4 <= glob.len() && &glob[glob_index..glob_index + 4] == b"/**/" {
+      glob_index += 3;
+    }
+
+    if glob_index + 3 == glob.len() && &glob[glob_index..] == b"/**" {
+      glob_index += 3;
+    }
+
+    self.longest_match = self.longest_match.max(glob_index);
+    self.glob_index = glob_index - 2;
+  }
+
+  #[inline(always)]
+  fn skip_to_separator(&mut self, path: &[u8], is_end_invalid: bool) {
+    if self.path_index == path.len() {
+      self.wildcard.path_index += 1;
+      return;
+    }
+
+    let mut path_index = self.path_index;
+    while path_index < path.len() && !is_separator(path[path_index] as char) {
+      path_index += 1;
+    }
+
+    if is_end_invalid || path_index != path.len() {
+      path_index += 1;
+    }
+
+    self.wildcard.path_index = path_index;
+    self.globstar = self.wildcard;
+  }
 }
 
 fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
@@ -118,14 +162,10 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
           let c = path[state.path_index];
           while state.glob_index < glob.len() && (first || glob[state.glob_index] != b']') {
             let mut low = glob[state.glob_index];
-            if !unescape(
-              &mut low,
-              glob,
-              &mut state.glob_index,
-              &mut state.longest_match,
-            ) {
+            if !unescape(&mut low, glob, &mut state) {
               return (false, state.longest_match);
             }
+
             state.glob_index += 1;
             state.longest_match = state.longest_match.max(state.glob_index);
 
@@ -137,12 +177,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
               state.longest_match = state.longest_match.max(state.glob_index);
 
               let mut high = glob[state.glob_index];
-              if !unescape(
-                &mut high,
-                glob,
-                &mut state.glob_index,
-                &mut state.longest_match,
-              ) {
+              if !unescape(&mut high, glob, &mut state) {
                 return (false, state.longest_match);
               }
 
@@ -171,12 +206,7 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
           }
         }
         mut c if state.path_index < path.len() => {
-          if !unescape(
-            &mut c,
-            glob,
-            &mut state.glob_index,
-            &mut state.longest_match,
-          ) {
+          if !unescape(&mut c, glob, &mut state) {
             return (false, state.longest_match);
           }
 
@@ -213,66 +243,22 @@ fn glob_match_normal(glob: &[u8], path: &[u8]) -> (bool, usize) {
   return (!negated, state.longest_match);
 }
 
-#[inline(always)]
-fn unescape(c: &mut u8, glob: &[u8], glob_index: &mut usize, longest_match: &mut usize) -> bool {
-  if *c == b'\\' {
-    *glob_index += 1;
-    *longest_match += 1;
-    if *glob_index >= glob.len() {
-      return false;
-    }
-    *c = match glob[*glob_index] {
-      b'a' => b'\x61',
-      b'b' => b'\x08',
-      b'n' => b'\n',
-      b'r' => b'\r',
-      b't' => b'\t',
-      c => c,
-    }
-  }
-  true
+pub fn glob_match(glob: &str, path: &str) -> bool {
+  glob_match_normal(glob.as_bytes(), path.as_bytes()).0
 }
 
-impl State {
-  #[inline(always)]
-  fn backtrack(&mut self) {
-    self.glob_index = self.wildcard.glob_index;
-    self.path_index = self.wildcard.path_index;
+pub fn glob_match_with_brace(glob: &str, path: &str) -> bool {
+  let glob = glob.as_bytes();
+  let path = path.as_bytes();
+
+  if let Some(pattern) = &mut Pattern::with(glob) {
+    loop {
+      let (result, longest_match) = glob_match_normal(&pattern.value, path);
+
+      if result || !pattern.trigger(glob, longest_match) {
+        return result;
+      }
+    }
   }
-
-  #[inline(always)]
-  fn skip_globstars(&mut self, glob: &[u8]) {
-    let mut glob_index = self.glob_index + 2;
-
-    while glob_index + 4 <= glob.len() && &glob[glob_index..glob_index + 4] == b"/**/" {
-      glob_index += 3;
-    }
-
-    if glob_index + 3 == glob.len() && &glob[glob_index..] == b"/**" {
-      glob_index += 3;
-    }
-
-    self.longest_match = self.longest_match.max(glob_index);
-    self.glob_index = glob_index - 2;
-  }
-
-  #[inline(always)]
-  fn skip_to_separator(&mut self, path: &[u8], is_end_invalid: bool) {
-    if self.path_index == path.len() {
-      self.wildcard.path_index += 1;
-      return;
-    }
-
-    let mut path_index = self.path_index;
-    while path_index < path.len() && !is_separator(path[path_index] as char) {
-      path_index += 1;
-    }
-
-    if is_end_invalid || path_index != path.len() {
-      path_index += 1;
-    }
-
-    self.wildcard.path_index = path_index;
-    self.globstar = self.wildcard;
-  }
+  false
 }
