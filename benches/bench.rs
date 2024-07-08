@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-const GLOB: &'static str = "some/**/{bbb,crazy}/needle.{pngg,txt}";
+const GLOB: &'static str = "some/**/{bbb,crazy}/needle.{png,txt}";
 const PATH: &'static str = "some/a/bigger/path/to/the/crazy/needle.txt";
 
 fn mine(c: &mut Criterion) {
@@ -12,8 +12,10 @@ fn mine(c: &mut Criterion) {
 fn globset(c: &mut Criterion) {
   c.bench_function("globset", |b| {
     b.iter(|| {
-      let pat = globset::Glob::new(GLOB).unwrap().compile_matcher();
-      assert!(pat.is_match(PATH));
+      assert!(globset::Glob::new(GLOB)
+        .unwrap()
+        .compile_matcher()
+        .is_match(PATH))
     })
   });
 }

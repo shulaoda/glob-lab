@@ -1,13 +1,13 @@
 #[derive(Debug)]
 pub struct Pattern {
   pub value: Vec<u8>,
-  branch: Vec<(u8, u8)>,
-  shadow: Vec<(usize, usize)>,
+  pub(crate) branch: Vec<(u8, u8)>,
+  pub(crate) shadow: Vec<(usize, usize)>,
 }
 
 impl Pattern {
-  fn brace(glob: &[u8]) -> Option<Vec<(u8, u8)>> {
-    let mut braces = 0;
+  pub fn parse(glob: &[u8]) -> Option<Vec<(u8, u8)>> {
+    let mut depth = 0;
     let mut current = 0;
     let mut in_brackets = false;
 
@@ -19,32 +19,32 @@ impl Pattern {
         b'\\' => current += 1,
         b']' if in_brackets => in_brackets = false,
         b'[' if !in_brackets => in_brackets = true,
-        b',' if !in_brackets && braces > 0 => {
-          branch[stack[braces - 1]].1 += 1;
+        b',' if !in_brackets && depth > 0 => {
+          branch[stack[depth - 1]].1 += 1;
         }
-        b'}' if !in_brackets && braces > 0 => {
-          braces -= 1;
+        b'}' if !in_brackets && depth > 0 => {
+          depth -= 1;
         }
         b'{' if !in_brackets => {
           branch.push((0, 1));
 
-          stack[braces] = branch.len() - 1;
-          braces += 1;
+          stack[depth] = branch.len() - 1;
+          depth += 1;
         }
         _ => {}
       }
       current += 1;
     }
 
-    if braces == 0 && !in_brackets {
+    if depth == 0 && !in_brackets {
       Some(branch)
     } else {
       None
     }
   }
 
-  pub fn with(glob: &[u8]) -> Option<Self> {
-    if let Some(branch) = Self::brace(glob) {
+  pub fn new(glob: &[u8]) -> Option<Self> {
+    if let Some(branch) = Self::parse(glob) {
       if branch.is_empty() {
         let value = glob.to_vec();
         let shadow = Vec::<(usize, usize)>::with_capacity(0);
@@ -59,14 +59,14 @@ impl Pattern {
       let value = Vec::with_capacity(glob.len());
       let shadow = Vec::<(usize, usize)>::new();
 
-      let mut node = Pattern {
+      let mut pattern = Pattern {
         value,
         branch,
         shadow,
       };
 
-      node.track(glob);
-      return Some(node);
+      pattern.track(glob);
+      return Some(pattern);
     }
     None
   }
@@ -74,7 +74,7 @@ impl Pattern {
   pub fn track(&mut self, glob: &[u8]) {
     let mut index = 0;
 
-    let mut braces = 0;
+    let mut depth = 0;
     let mut current = 0;
     let mut is_valid = true;
     let mut in_brackets = false;
@@ -84,22 +84,23 @@ impl Pattern {
 
     self.value.clear();
     self.shadow.clear();
+
     while current < glob.len() {
       match glob[current] {
-        b',' if !in_brackets && braces > 0 => {
-          if len == braces {
+        b',' if !in_brackets && depth > 0 => {
+          if len == depth {
             let (i, idx) = &mut stack[len - 1];
 
             *i += 1;
             is_valid = self.branch[*idx].0 == *i;
           }
         }
-        b'}' if !in_brackets && braces > 0 => {
-          if len == braces {
+        b'}' if !in_brackets && depth > 0 => {
+          if len == depth {
             len -= 1;
             is_valid = true;
           }
-          braces -= 1;
+          depth -= 1;
         }
         b'{' if !in_brackets => {
           if is_valid {
@@ -111,7 +112,7 @@ impl Pattern {
             self.shadow.push((index, self.value.len()));
           }
 
-          braces += 1;
+          depth += 1;
           index += 1;
         }
         c => {
@@ -137,7 +138,7 @@ impl Pattern {
   }
 
   pub fn trigger(&mut self, glob: &[u8], target: usize) -> bool {
-    while let Some((idx, position)) = self.shadow.pop() {
+    for &(idx, position) in self.shadow.iter().rev() {
       if target >= position {
         self.branch[idx].0 += 1;
         if self.branch[idx].1 != self.branch[idx].0 {
@@ -149,6 +150,14 @@ impl Pattern {
     }
     false
   }
+
+  pub fn restore(&mut self) {
+    for b in &mut self.branch {
+      if b.0 != 0 {
+        b.0 = 0;
+      }
+    }
+  }
 }
 
 #[cfg(test)]
@@ -158,11 +167,11 @@ mod tests {
   #[test]
   fn brace_expansion() {
     let glob = b"some/{a,b{c,d}f,e}/ccc.{png,jpg}";
-    let mut node = Pattern::with(glob).unwrap();
+    let mut pattern = Pattern::new(glob).unwrap();
 
     loop {
-      println!("{:?}", String::from_utf8(node.value.clone()).unwrap());
-      if !node.trigger(glob, node.value.len()) {
+      println!("{:?}", String::from_utf8(pattern.value.clone()).unwrap());
+      if !pattern.trigger(glob, pattern.value.len()) {
         break;
       }
     }

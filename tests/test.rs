@@ -5,6 +5,22 @@ mod tests {
   use super::*;
 
   #[test]
+  fn test() {
+    let mut matcher = Glob::new("*.png").unwrap();
+
+    assert!(matcher.is_match("a.png"));
+    assert!(!matcher.is_match("b.txt"));
+    assert!(!matcher.is_match("b/a.png"));
+
+    assert!(matcher.add("*.txt"));
+
+    assert!(matcher.is_match("a.png"));
+    assert!(matcher.is_match("b.txt"));
+    assert!(!matcher.is_match("b/a.png"));
+    assert!(!matcher.is_match("a/b.txt"));
+  }
+
+  #[test]
   fn webpack() {
     // Match everything
     assert!(glob_match("**/*", "foo"));
