@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Pattern {
   pub value: Vec<u8>,
   pub(crate) branch: Vec<(u8, u8)>,
@@ -43,7 +43,7 @@ impl Pattern {
     }
   }
 
-  pub fn new(glob: &[u8]) -> Option<Self> {
+  pub fn with(glob: &[u8]) -> Option<Self> {
     if let Some(branch) = Self::parse(glob) {
       if branch.is_empty() {
         let value = glob.to_vec();
@@ -167,7 +167,7 @@ mod tests {
   #[test]
   fn brace_expansion() {
     let glob = b"some/{a,b{c,d}f,e}/ccc.{png,jpg}";
-    let mut pattern = Pattern::new(glob).unwrap();
+    let mut pattern = Pattern::with(glob).unwrap();
 
     loop {
       println!("{:?}", String::from_utf8(pattern.value.clone()).unwrap());
