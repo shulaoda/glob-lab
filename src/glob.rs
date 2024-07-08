@@ -24,14 +24,7 @@ fn unescape(c: &mut u8, glob: &[u8], state: &mut State) -> bool {
     if state.glob_index >= glob.len() {
       return false;
     }
-    *c = match glob[state.glob_index] {
-      b'a' => b'\x61',
-      b'b' => b'\x08',
-      b'n' => b'\n',
-      b'r' => b'\r',
-      b't' => b'\t',
-      c => c,
-    }
+    *c = glob[state.glob_index];
   }
   true
 }

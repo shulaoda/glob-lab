@@ -6,18 +6,27 @@ mod tests {
 
   #[test]
   fn test() {
-    let mut matcher = Glob::with("*.png").unwrap();
+    let mut matcher = Glob::default();
+    assert!(!matcher.is_match("a.png"));
+    assert!(!matcher.is_match("b.txt"));
+    assert!(!matcher.is_match("b/a.png"));
 
-    assert!(matcher.matches("a.png"));
-    assert!(!matcher.matches("b.txt"));
-    assert!(!matcher.matches("b/a.png"));
+    assert!(matcher.add("*.png"));
+    assert!(matcher.is_match("a.png"));
+    assert!(!matcher.is_match("b.txt"));
+    assert!(!matcher.is_match("b/a.png"));
 
     assert!(matcher.add("*.txt"));
+    assert!(matcher.is_match("a.png"));
+    assert!(matcher.is_match("b.txt"));
+    assert!(!matcher.is_match("b/a.png"));
+    assert!(!matcher.is_match("a/b.txt"));
 
-    assert!(matcher.matches("a.png"));
-    assert!(matcher.matches("b.txt"));
-    assert!(!matcher.matches("b/a.png"));
-    assert!(!matcher.matches("a/b.txt"));
+    assert!(matcher.add("**/*.{txt,png}"));
+    assert!(matcher.is_match("a.png"));
+    assert!(matcher.is_match("b.txt"));
+    assert!(matcher.is_match("b/a.png"));
+    assert!(matcher.is_match("a/b.txt"));
   }
 
   #[test]

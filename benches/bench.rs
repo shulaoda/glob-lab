@@ -1,11 +1,11 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-const GLOB: &'static str = "some/**/{bbb,crazy}/needle.{png,txt}";
+const GLOB: &'static str = "some/**/crazy/needle.txt";
 const PATH: &'static str = "some/a/bigger/path/to/the/crazy/needle.txt";
 
 fn mine(c: &mut Criterion) {
   c.bench_function("mine", |b| {
-    b.iter(|| assert!(glob_lab::glob_match_with_brace(GLOB, PATH)))
+    b.iter(|| glob_lab::Glob::new(GLOB).unwrap().is_match(PATH))
   });
 }
 

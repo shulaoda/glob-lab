@@ -12,7 +12,7 @@ impl Pattern {
     let mut in_brackets = false;
 
     let mut stack = [0; 10];
-    let mut branch = Vec::<(u8, u8)>::new();
+    let mut branch = Vec::<(u8, u8)>::with_capacity(16);
 
     while current < glob.len() {
       match glob[current] {
@@ -43,11 +43,11 @@ impl Pattern {
     }
   }
 
-  pub fn with(glob: &[u8]) -> Option<Self> {
+  pub fn new(glob: &[u8]) -> Option<Self> {
     if let Some(branch) = Self::parse(glob) {
       if branch.is_empty() {
         let value = glob.to_vec();
-        let shadow = Vec::<(usize, usize)>::with_capacity(0);
+        let shadow = Vec::new();
 
         return Some(Pattern {
           value,
@@ -57,7 +57,7 @@ impl Pattern {
       }
 
       let value = Vec::with_capacity(glob.len());
-      let shadow = Vec::<(usize, usize)>::new();
+      let shadow = Vec::with_capacity(branch.len());
 
       let mut pattern = Pattern {
         value,
@@ -167,7 +167,7 @@ mod tests {
   #[test]
   fn brace_expansion() {
     let glob = b"some/{a,b{c,d}f,e}/ccc.{png,jpg}";
-    let mut pattern = Pattern::with(glob).unwrap();
+    let mut pattern = Pattern::new(glob).unwrap();
 
     loop {
       println!("{:?}", String::from_utf8(pattern.value.clone()).unwrap());
